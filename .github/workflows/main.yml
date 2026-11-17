@@ -18,6 +18,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Find project folder
+        id: find
+        run: |
+          FILE=$(find . -name build.gradle.kts -not -path './.git/*' | head -n 1)
+          if [ -z "$FILE" ]; then
+            echo "build.gradle.kts не найден в репозитории"
+            exit 1
+          fi
+          DIR=$(dirname "$FILE")
+          echo "Проект лежит в: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
@@ -26,18 +38,24 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+        with:
+          gradle-version: 8.14.3
 
       - name: Build
-        run: ./gradlew build --no-daemon
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew build --no-daemon
+          else
+            gradle build --no-daemon
+          fi
 
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
           name: elytra-jump
-          path: build/libs/*.jar
+          path: ${{ steps.find.outputs.dir }}/build/libs/*.jar
           if-no-files-found: error
 
       # Релиз с джаром создаётся, когда пушишь тег вида v0.1.0
@@ -45,4 +63,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/libs/*.jar
+          files: ${{ steps.find.outputs.dir }}/build/libs/*.jar
